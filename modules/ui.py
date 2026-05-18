@@ -91,6 +91,11 @@ PREVIEW_MAX_WIDTH = 1200
 PREVIEW_DEFAULT_WIDTH = 640
 PREVIEW_DEFAULT_HEIGHT = 360
 
+# Virtual camera output size — fixed 720p so meeting apps don't see
+# our capture-resolution variations. Frames are upscaled before send.
+VCAM_W, VCAM_H = 1280, 720
+VCAM_FPS = 30
+
 POPUP_WIDTH = 750
 POPUP_HEIGHT = 810
 POPUP_SCROLL_WIDTH = 720
@@ -589,6 +594,10 @@ class MainWindow(QMainWindow):
                                  "Fix blue/green color cast from some webcams")
         self.sw_show_fps = make("show_fps", "Show FPS",
                                 "Display frames-per-second counter on the live preview")
+        self.sw_virtual_cam = make("virtual_cam", "Virtual Cam",
+                                   "Output processed frames to OBS Virtual Camera (1280x720) "
+                                   "so Discord/Meet/Zoom can pick it up. Requires OBS Studio "
+                                   "installed for the driver. Applied at next Live start.")
 
         # Map faces is special — closes mapper when toggled off.
         self.sw_map_faces = _Switch(_("Map faces"), modules.globals.map_faces,
@@ -601,6 +610,7 @@ class MainWindow(QMainWindow):
             self.sw_keep_frames, self.sw_many_faces,
             self.sw_map_faces, self.sw_show_fps,
             self.sw_poisson, self.sw_color_fix,
+            self.sw_virtual_cam,
         ]
         for i, w in enumerate(items):
             grid.addWidget(w, i // 2, i % 2)
@@ -1274,6 +1284,28 @@ class WebcamPreviewWindow(QWidget):
         self._processed_queue: queue.Queue = queue.Queue(maxsize=2)
         self._stop_event = threading.Event()
 
+        # Optional virtual camera output (pyvirtualcam → OBS Virtual Camera).
+        # Snapshot the global at start so toggling mid-session doesn't crash
+        # the send loop; user must Stop+Start to change vcam state.
+        self._vcam = None
+        if getattr(modules.globals, "virtual_cam", False):
+            try:
+                import pyvirtualcam
+                self._vcam = pyvirtualcam.Camera(
+                    width=VCAM_W, height=VCAM_H, fps=VCAM_FPS
+                )
+                update_status(
+                    f"Virtual camera started: {self._vcam.device} @ {VCAM_W}x{VCAM_H}"
+                )
+            except ImportError:
+                update_status("pyvirtualcam not installed — pip install pyvirtualcam")
+                self._vcam = None
+            except Exception as e:
+                update_status(
+                    f"Virtual camera failed: {e}. Install OBS Studio for the OBS Virtual Camera driver."
+                )
+                self._vcam = None
+
         self._capture_worker = _CaptureWorker(
             self._cap, self._capture_queue, self._stop_event
         )
@@ -1297,6 +1329,26 @@ class WebcamPreviewWindow(QWidget):
             bgr_frame = self._processed_queue.get_nowait()
         except queue.Empty:
             return
+
+        # Send to virtual camera BEFORE the display fit-resize so meeting
+        # apps always see the full processed frame at a stable 1280x720,
+        # regardless of how the user has resized the preview window.
+        if self._vcam is not None:
+            try:
+                vcam_frame = bgr_frame
+                if vcam_frame.shape[1] != VCAM_W or vcam_frame.shape[0] != VCAM_H:
+                    vcam_frame = cv2.resize(
+                        vcam_frame, (VCAM_W, VCAM_H), interpolation=cv2.INTER_LINEAR
+                    )
+                rgb = cv2.cvtColor(vcam_frame, cv2.COLOR_BGR2RGB)
+                self._vcam.send(rgb)
+            except Exception as e:
+                # Don't kill the preview if vcam misbehaves — just log once.
+                if not getattr(self, "_vcam_warned", False):
+                    print(f"[vcam] send error (continuing without vcam): {e}")
+                    self._vcam_warned = True
+                self._vcam = None
+
         bgr_frame = fit_image_to_size(bgr_frame, self.width(), self.height())
         self._image_label.setPixmap(_bgr_to_qpixmap(bgr_frame))
 
@@ -1315,6 +1367,12 @@ class WebcamPreviewWindow(QWidget):
             self._cap.release()
         except Exception:
             pass
+        if getattr(self, "_vcam", None) is not None:
+            try:
+                self._vcam.close()
+            except Exception:
+                pass
+            self._vcam = None
         global _WEBCAM_PREVIEW
         if _WEBCAM_PREVIEW is self:
             _WEBCAM_PREVIEW = None
