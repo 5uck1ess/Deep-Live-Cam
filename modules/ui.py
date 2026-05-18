@@ -1351,8 +1351,12 @@ class WebcamPreviewWindow(QWidget):
                     self._vcam_warned = True
                 self._vcam = None
 
-        bgr_frame = fit_image_to_size(bgr_frame, self.width(), self.height())
-        self._image_label.setPixmap(_bgr_to_qpixmap(bgr_frame))
+        # Skip the display-side resize + Qt pixmap conversion when the
+        # window is hidden (Virtual Cam mode). Saves the cv2.resize and
+        # the BGR→QImage copy each tick — small but free.
+        if not self.isHidden():
+            bgr_frame = fit_image_to_size(bgr_frame, self.width(), self.height())
+            self._image_label.setPixmap(_bgr_to_qpixmap(bgr_frame))
 
     def closeEvent(self, event) -> None:
         self._stop_event.set()
@@ -1386,7 +1390,12 @@ def _open_webcam_preview(camera_index: int) -> None:
     if _WEBCAM_PREVIEW is not None:
         _WEBCAM_PREVIEW.close()
     _WEBCAM_PREVIEW = WebcamPreviewWindow(camera_index)
-    _WEBCAM_PREVIEW.show()
+    # In Virtual Cam mode the user is consuming the swap via OBS Virtual
+    # Camera in another app — drawing a redundant preview window wastes
+    # CPU on cv2.resize + Qt repaints. Match April fork's behavior:
+    # hidden window, workers still run, frames go to vcam only.
+    if not getattr(modules.globals, "virtual_cam", False):
+        _WEBCAM_PREVIEW.show()
 
 
 # ─── mapper dialogs (image/video + live) ────────────────────────────────
