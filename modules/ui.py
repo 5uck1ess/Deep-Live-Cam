@@ -615,9 +615,11 @@ class MainWindow(QMainWindow):
         for i, w in enumerate(items):
             grid.addWidget(w, i // 2, i % 2)
 
-        # Face enhancer dropdown
+        # Face enhancer dropdown — place on the next free row.
+        # Items occupy ceil(len/2) rows; (len + 1) // 2 is the next row.
+        enhancer_row = (len(items) + 1) // 2
         enhancer_label = QLabel(_("Face Enhancer:"))
-        grid.addWidget(enhancer_label, len(items) // 2, 0)
+        grid.addWidget(enhancer_label, enhancer_row, 0)
 
         self.cb_enhancer = QComboBox()
         self.cb_enhancer.addItems(["None", "GFPGAN-1024", "GFPGAN-512", "GPEN-512", "GPEN-256"])
@@ -633,7 +635,7 @@ class MainWindow(QMainWindow):
         self.cb_enhancer.setCurrentText(initial)
         self.cb_enhancer.currentTextChanged.connect(self._on_enhancer_change)
         self.cb_enhancer.setToolTip(_("Select a face enhancement model (None = no enhancement)"))
-        grid.addWidget(self.cb_enhancer, len(items) // 2, 1)
+        grid.addWidget(self.cb_enhancer, enhancer_row, 1)
 
         return card
 
