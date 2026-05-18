@@ -70,6 +70,12 @@ enable_interpolation: bool = True # Toggle temporal smoothing
 interpolation_weight: float = 0  # Blend weight for current frame (0.0-1.0). Lower=smoother.
 # --- END: Added for Frame Interpolation ---
 
+# GFPGAN model filename. Currently shipped variants:
+#   gfpgan-1024.onnx  — 512 in, 1024 out (super-res head). Highest quality.
+#   gfpgan_1.4.onnx   — 512 in, 512 out. Lighter, faster.
+# Hot-swap supported via reset_face_enhancer() (called from UI on change).
+gfpgan_model_filename: str = "gfpgan-1024.onnx"
+
 # Face detection resolution (160, 320, or 640).
 # Lower = faster detection, fewer FLOPs, less accurate at distance.
 # Changes require face analyser re-init (handled in UI by clearing FACE_ANALYSER).
