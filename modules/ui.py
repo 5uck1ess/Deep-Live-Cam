@@ -494,18 +494,11 @@ class MainWindow(QMainWindow):
         # Camera selection
         layout.addWidget(self._build_camera_card())
 
-        # Status & footer
+        # Status bar (footer link removed)
         self._status_label = QLabel("")
         self._status_label.setObjectName("statusLabel")
         self._status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._status_label)
-
-        footer = QLabel("Deep Live Cam")
-        footer.setObjectName("linkLabel")
-        footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        footer.setCursor(Qt.CursorShape.PointingHandCursor)
-        footer.mousePressEvent = lambda _e: webbrowser.open("https://deeplivecam.net")
-        layout.addWidget(footer)
 
     # ── image row ────────────────────────────────────────────────────────
 
@@ -791,7 +784,7 @@ class MainWindow(QMainWindow):
         path, _filter = QFileDialog.getOpenFileName(
             self, _("select an source image"),
             _RECENT_SOURCE_DIR or "",
-            "Images (*.png *.jpg *.jpeg *.gif *.bmp)",
+            "Images (*.png *.jpg *.jpeg *.gif *.bmp *.webp)",
         )
         if path and is_image(path):
             modules.globals.source_path = path
@@ -812,7 +805,7 @@ class MainWindow(QMainWindow):
         path, _filter = QFileDialog.getOpenFileName(
             self, _("select an target image or video"),
             _RECENT_TARGET_DIR or "",
-            "Media (*.png *.jpg *.jpeg *.gif *.bmp *.mp4 *.mkv)",
+            "Media (*.png *.jpg *.jpeg *.gif *.bmp *.webp *.mp4 *.mkv)",
         )
         if not path:
             return
@@ -943,7 +936,7 @@ class MainWindow(QMainWindow):
             path, _f = QFileDialog.getSaveFileName(
                 self, _("save image output file"),
                 os.path.join(_RECENT_OUTPUT_DIR or "", "output.png"),
-                "Images (*.png *.jpg *.jpeg *.bmp)",
+                "Images (*.png *.jpg *.jpeg *.gif *.bmp *.webp)",
             )
         elif is_video(modules.globals.target_path):
             path, _f = QFileDialog.getSaveFileName(
@@ -1392,7 +1385,7 @@ class MapperDialog(QDialog):
         path, _f = QFileDialog.getOpenFileName(
             self, _("select an source image"),
             _RECENT_SOURCE_DIR or "",
-            "Images (*.png *.jpg *.jpeg *.gif *.bmp)",
+            "Images (*.png *.jpg *.jpeg *.gif *.bmp *.webp)",
         )
         if not path:
             return
@@ -1497,7 +1490,7 @@ class LiveMapperDialog(QDialog):
         path, _f = QFileDialog.getOpenFileName(
             self, _("select an source image"),
             _RECENT_SOURCE_DIR or "",
-            "Images (*.png *.jpg *.jpeg *.gif *.bmp)",
+            "Images (*.png *.jpg *.jpeg *.gif *.bmp *.webp)",
         )
         if not path:
             return
