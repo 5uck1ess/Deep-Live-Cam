@@ -83,8 +83,8 @@ import json
 
 # ─── constants ────────────────────────────────────────────────────────────
 
-ROOT_HEIGHT = 820
-ROOT_WIDTH = 640
+ROOT_HEIGHT = 1000
+ROOT_WIDTH = 880
 
 PREVIEW_MAX_HEIGHT = 700
 PREVIEW_MAX_WIDTH = 1200
@@ -470,7 +470,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(
             f"{modules.metadata.name} {modules.metadata.version} {modules.metadata.edition}"
         )
-        self.setMinimumSize(ROOT_WIDTH, ROOT_HEIGHT)
+        # Allow user to shrink the window if needed (laptops, side-by-side
+        # with a meeting app), but open at a comfortable default that fits
+        # all the dropdowns and toggles without cramping.
+        self.setMinimumSize(640, 820)
         self.resize(ROOT_WIDTH, ROOT_HEIGHT)
 
         root = QWidget()
