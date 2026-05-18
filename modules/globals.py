@@ -92,7 +92,11 @@ det_size: int = 640
 # Camera may negotiate to nearest supported size (e.g. 640x360 -> 640x480 on
 # many webcams). Actual size after open is printed in console log line
 # "[VideoCapturer] WxH @ FPS".
-capture_resolution: tuple = (640, 360)
+# Default 960x540 (qHD, 16:9): matches the 1280x720 vcam output ratio, so
+# faces don't stretch in Discord/Meet/Zoom. 640x480 is 4:3 and looks wide
+# after upscale; 360p looks low-res. 720p is camera USB-bandwidth capped
+# at ~10fps on most webcams.
+capture_resolution: tuple = (960, 540)
 
 # --- END OF FILE globals.py ---
 

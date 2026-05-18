@@ -754,7 +754,10 @@ class MainWindow(QMainWindow):
         self.cb_resolution.setToolTip(_(
             "Requested webcam resolution. Camera may negotiate down — actual "
             "size is printed in console as '[VideoCapturer] WxH @ FPS'. "
-            "Applies on next Live start."
+            "Applies on next Live start.\n\n"
+            "For Discord/Meet/Zoom: 960x540 (16:9) matches the vcam output "
+            "ratio so faces don't stretch. 640x480 is 4:3 and looks wide "
+            "after upscale. 720p is usually USB-bandwidth capped to ~10fps."
         ))
         grid.addWidget(self.cb_resolution, 1, 1, 1, 2)
 
