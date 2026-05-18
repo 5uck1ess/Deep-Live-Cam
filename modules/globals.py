@@ -70,6 +70,17 @@ enable_interpolation: bool = True # Toggle temporal smoothing
 interpolation_weight: float = 0  # Blend weight for current frame (0.0-1.0). Lower=smoother.
 # --- END: Added for Frame Interpolation ---
 
+# Face detection resolution (160, 320, or 640).
+# Lower = faster detection, fewer FLOPs, less accurate at distance.
+# Changes require face analyser re-init (handled in UI by clearing FACE_ANALYSER).
+det_size: int = 640
+
+# Webcam capture resolution requested via cv2.CAP_PROP_FRAME_WIDTH/HEIGHT.
+# Camera may negotiate to nearest supported size (e.g. 640x360 -> 640x480 on
+# many webcams). Actual size after open is printed in console log line
+# "[VideoCapturer] WxH @ FPS".
+capture_resolution: tuple = (640, 360)
+
 # --- END OF FILE globals.py ---
 
 import threading
