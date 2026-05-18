@@ -572,12 +572,14 @@ class MainWindow(QMainWindow):
 
         def make(field, label, tip):
             sw = _Switch(_(label), getattr(modules.globals, field), _(tip))
-            sw.toggled.connect(
-                lambda v, f=field: (
-                    setattr(modules.globals, f, v),
-                    save_switch_states(),
-                )
-            )
+
+            def _on_toggle(v, f=field):
+                setattr(modules.globals, f, v)
+                if f == "virtual_cam":
+                    print(f"[vcam] toggle -> globals.virtual_cam = {v}")
+                save_switch_states()
+
+            sw.toggled.connect(_on_toggle)
             return sw
 
         self.sw_keep_fps = make("keep_fps", "Keep fps",
@@ -998,6 +1000,16 @@ class MainWindow(QMainWindow):
             _PREVIEW.show()
 
     def _on_live(self) -> None:
+        # Toggle behavior: if a preview is already running, stop it.
+        # Critical when virtual_cam mode is on — the preview window is
+        # hidden, so the Live button is the only way to stop the session.
+        global _WEBCAM_PREVIEW
+        if _WEBCAM_PREVIEW is not None:
+            _WEBCAM_PREVIEW.close()
+            self.btn_live.setText(_("Live"))
+            update_status("Stopped.")
+            return
+
         idx = self.cb_camera.currentIndex()
         if idx < 0 or idx >= len(self._camera_indices):
             update_status("No camera available")
@@ -1015,10 +1027,18 @@ class MainWindow(QMainWindow):
             from modules.processors.frame.face_swapper import get_face_swapper
             get_face_analyser()
             get_face_swapper()
-            _open_webcam_preview(camera_index)
+            _open_webcam_preview(camera_index, on_close=self._on_live_stopped)
+            # Successful open — flip button to Stop label
+            if _WEBCAM_PREVIEW is not None:
+                self.btn_live.setText(_("Stop Live"))
         else:
             modules.globals.source_target_map = []
             _open_live_mapper_dialog(camera_index, modules.globals.source_target_map)
+
+    def _on_live_stopped(self) -> None:
+        """Reset the Live button when the preview window closes by any path
+        (user closed it, OS killed it, vcam tear-down, etc.)."""
+        self.btn_live.setText(_("Live"))
 
     def closeEvent(self, event):
         # Treat OS-level close as Destroy click
@@ -1290,7 +1310,9 @@ class WebcamPreviewWindow(QWidget):
         # Snapshot the global at start so toggling mid-session doesn't crash
         # the send loop; user must Stop+Start to change vcam state.
         self._vcam = None
-        if getattr(modules.globals, "virtual_cam", False):
+        vcam_requested = getattr(modules.globals, "virtual_cam", False)
+        print(f"[vcam] Live start — virtual_cam global = {vcam_requested}")
+        if vcam_requested:
             try:
                 import pyvirtualcam
                 self._vcam = pyvirtualcam.Camera(
@@ -1382,14 +1404,23 @@ class WebcamPreviewWindow(QWidget):
         global _WEBCAM_PREVIEW
         if _WEBCAM_PREVIEW is self:
             _WEBCAM_PREVIEW = None
+        # Notify whoever opened us (typically MainWindow) so they can
+        # reset their button state regardless of how we got closed.
+        cb = getattr(self, "_on_close_callback", None)
+        if cb is not None:
+            try:
+                cb()
+            except Exception as e:
+                print(f"[live] on_close callback raised: {e}")
         event.accept()
 
 
-def _open_webcam_preview(camera_index: int) -> None:
+def _open_webcam_preview(camera_index: int, on_close=None) -> None:
     global _WEBCAM_PREVIEW
     if _WEBCAM_PREVIEW is not None:
         _WEBCAM_PREVIEW.close()
     _WEBCAM_PREVIEW = WebcamPreviewWindow(camera_index)
+    _WEBCAM_PREVIEW._on_close_callback = on_close
     # In Virtual Cam mode the user is consuming the swap via OBS Virtual
     # Camera in another app — drawing a redundant preview window wastes
     # CPU on cv2.resize + Qt repaints. Match April fork's behavior:
