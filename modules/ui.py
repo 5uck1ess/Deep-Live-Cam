@@ -96,6 +96,35 @@ PREVIEW_DEFAULT_HEIGHT = 360
 VCAM_W, VCAM_H = 1280, 720
 VCAM_FPS = 30
 
+
+def _aspect_crop_to(frame, out_w: int, out_h: int):
+    """Center-crop ``frame`` to the (out_w, out_h) aspect ratio, then resize.
+
+    Used by the vcam send path. A plain ``cv2.resize`` to a different
+    aspect (e.g. 4:3 -> 16:9) horizontally squashes faces in meeting
+    apps. Cropping the longer axis first keeps faces correctly
+    proportioned at the cost of trimming a bit off top/bottom (for
+    4:3 input -> 16:9 output) or left/right (for ultra-wide input).
+    """
+    h, w = frame.shape[:2]
+    if w <= 0 or h <= 0:
+        return frame
+    in_aspect = w / h
+    out_aspect = out_w / out_h
+    if abs(in_aspect - out_aspect) < 0.01:
+        cropped = frame
+    elif in_aspect < out_aspect:
+        new_h = max(1, int(round(w / out_aspect)))
+        y0 = max(0, (h - new_h) // 2)
+        cropped = frame[y0:y0 + new_h, :, :]
+    else:
+        new_w = max(1, int(round(h * out_aspect)))
+        x0 = max(0, (w - new_w) // 2)
+        cropped = frame[:, x0:x0 + new_w, :]
+    if cropped.shape[1] == out_w and cropped.shape[0] == out_h:
+        return cropped
+    return cv2.resize(cropped, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
+
 POPUP_WIDTH = 750
 POPUP_HEIGHT = 810
 POPUP_SCROLL_WIDTH = 720
@@ -1360,13 +1389,13 @@ class WebcamPreviewWindow(QWidget):
         # Send to virtual camera BEFORE the display fit-resize so meeting
         # apps always see the full processed frame at a stable 1280x720,
         # regardless of how the user has resized the preview window.
+        # Aspect-preserving center crop: many webcams negotiate 4:3 even
+        # when 16:9 is requested (e.g. 360p -> 480p). A plain resize to
+        # 1280x720 would horizontally squash that 4:3 frame, so we crop
+        # the longer axis to match the 16:9 output ratio first.
         if self._vcam is not None:
             try:
-                vcam_frame = bgr_frame
-                if vcam_frame.shape[1] != VCAM_W or vcam_frame.shape[0] != VCAM_H:
-                    vcam_frame = cv2.resize(
-                        vcam_frame, (VCAM_W, VCAM_H), interpolation=cv2.INTER_LINEAR
-                    )
+                vcam_frame = _aspect_crop_to(bgr_frame, VCAM_W, VCAM_H)
                 rgb = cv2.cvtColor(vcam_frame, cv2.COLOR_BGR2RGB)
                 self._vcam.send(rgb)
             except Exception as e:
