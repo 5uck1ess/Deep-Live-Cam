@@ -658,7 +658,7 @@ class MainWindow(QMainWindow):
         if modules.globals.fp_ui.get("face_enhancer", False):
             # Pick the GFPGAN variant currently selected via globals
             fn = getattr(modules.globals, "gfpgan_model_filename", "gfpgan-1024.onnx")
-            initial = "GFPGAN-512" if fn == "gfpgan_1.4.onnx" else "GFPGAN-1024"
+            initial = "GFPGAN-512" if fn == "GFPGANv1.4.onnx" else "GFPGAN-1024"
         elif modules.globals.fp_ui.get("face_enhancer_gpen512", False):
             initial = "GPEN-512"
         elif modules.globals.fp_ui.get("face_enhancer_gpen256", False):
@@ -934,7 +934,7 @@ class MainWindow(QMainWindow):
         }
         gfpgan_filename = {
             "GFPGAN-1024": "gfpgan-1024.onnx",
-            "GFPGAN-512": "gfpgan_1.4.onnx",
+            "GFPGAN-512": "GFPGANv1.4.onnx",
         }
 
         for key in ("face_enhancer", "face_enhancer_gpen256", "face_enhancer_gpen512"):

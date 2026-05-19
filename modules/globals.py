@@ -79,7 +79,7 @@ virtual_cam: bool = False
 
 # GFPGAN model filename. Currently shipped variants:
 #   gfpgan-1024.onnx  — 512 in, 1024 out (super-res head). Highest quality.
-#   gfpgan_1.4.onnx   — 512 in, 512 out. Lighter, faster.
+#   GFPGANv1.4.onnx   — 512 in, 512 out. Lighter, faster. (HF canonical name)
 # Hot-swap supported via reset_face_enhancer() (called from UI on change).
 gfpgan_model_filename: str = "gfpgan-1024.onnx"
 
