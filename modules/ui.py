@@ -766,11 +766,12 @@ class MainWindow(QMainWindow):
         # Row 1: capture resolution
         grid.addWidget(QLabel(_("Resolution:")), 1, 0)
         self.cb_resolution = QComboBox()
-        # All 16:9 tiers — webcams that don't support a given size will
-        # negotiate to the nearest, and the vcam path center-crops any
-        # 4:3 returns back to 16:9 so faces never stretch.
+        # 640x480 default — native on virtually every webcam, fast on
+        # USB 2.0. The vcam path center-crops 4:3 to 16:9 so faces don't
+        # stretch in meetings. Other tiers are proper 16:9 and used when
+        # the cam supports them natively (else they negotiate down).
         self._resolution_options = [
-            ("854 x 480 (SD)", (854, 480)),
+            ("640 x 480", (640, 480)),
             ("960 x 540 (qHD)", (960, 540)),
             ("1280 x 720 (HD)", (1280, 720)),
             ("1920 x 1080 (FHD)", (1920, 1080)),
@@ -783,12 +784,13 @@ class MainWindow(QMainWindow):
         self.cb_resolution.setCurrentIndex(idx)
         self.cb_resolution.currentIndexChanged.connect(self._on_resolution_change)
         self.cb_resolution.setToolTip(_(
-            "Requested webcam resolution (all 16:9). Camera may negotiate to "
-            "a 4:3 size instead — the vcam path center-crops back to 16:9 so "
-            "faces never stretch. Actual size printed in console as "
-            "'[VideoCapturer] WxH @ FPS'. Applies on next Live start.\n\n"
-            "Speed vs quality: SD/qHD usually hit full 30fps. HD/FHD often "
-            "drop to ~10fps on USB 2.0 webcams due to bandwidth limits."
+            "Requested webcam resolution. Camera may negotiate to its "
+            "nearest supported size — actual size printed in console as "
+            "'[VideoCapturer] WxH @ FPS'. The vcam path center-crops 4:3 "
+            "frames to 16:9 so faces never stretch. Applies on next Live.\n\n"
+            "640x480 is native on virtually every webcam and the safest "
+            "30fps choice. qHD often works too. HD/FHD typically drop to "
+            "~10fps on USB 2.0 webcams due to bandwidth limits."
         ))
         grid.addWidget(self.cb_resolution, 1, 1, 1, 2)
 

@@ -89,14 +89,12 @@ gfpgan_model_filename: str = "gfpgan-1024.onnx"
 det_size: int = 640
 
 # Webcam capture resolution requested via cv2.CAP_PROP_FRAME_WIDTH/HEIGHT.
-# Camera may negotiate to nearest supported size (often 4:3 like 640x480
-# when the requested 16:9 isn't supported). Actual size after open is
-# printed in console as "[VideoCapturer] WxH @ FPS". The vcam send path
-# center-crops 4:3 returns back to 16:9 so faces don't stretch.
-# All dropdown options are 16:9 (SD/qHD/HD/FHD). Default 854x480 (SD):
-# fast on USB 2.0, plenty of resolution after face swap + enhancer.
-# 720p+ usually hits USB bandwidth cap (~10fps on most webcams).
-capture_resolution: tuple = (854, 480)
+# Camera may negotiate to nearest supported size. Actual size after open
+# is printed in console as "[VideoCapturer] WxH @ FPS". The vcam send
+# path center-crops 4:3 frames to 16:9 so faces don't stretch.
+# Default 640x480: native on virtually every webcam, fastest reliable
+# mode on USB 2.0. Higher 16:9 tiers (540/720/1080) selectable in UI.
+capture_resolution: tuple = (640, 480)
 
 # --- END OF FILE globals.py ---
 
