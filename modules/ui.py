@@ -766,12 +766,14 @@ class MainWindow(QMainWindow):
         # Row 1: capture resolution
         grid.addWidget(QLabel(_("Resolution:")), 1, 0)
         self.cb_resolution = QComboBox()
+        # All 16:9 tiers — webcams that don't support a given size will
+        # negotiate to the nearest, and the vcam path center-crops any
+        # 4:3 returns back to 16:9 so faces never stretch.
         self._resolution_options = [
-            ("640 x 360", (640, 360)),
-            ("640 x 480", (640, 480)),
-            ("960 x 540", (960, 540)),
-            ("1280 x 720", (1280, 720)),
-            ("1920 x 1080", (1920, 1080)),
+            ("854 x 480 (SD)", (854, 480)),
+            ("960 x 540 (qHD)", (960, 540)),
+            ("1280 x 720 (HD)", (1280, 720)),
+            ("1920 x 1080 (FHD)", (1920, 1080)),
         ]
         for label, _wh in self._resolution_options:
             self.cb_resolution.addItem(label)
@@ -781,12 +783,12 @@ class MainWindow(QMainWindow):
         self.cb_resolution.setCurrentIndex(idx)
         self.cb_resolution.currentIndexChanged.connect(self._on_resolution_change)
         self.cb_resolution.setToolTip(_(
-            "Requested webcam resolution. Camera may negotiate down — actual "
-            "size is printed in console as '[VideoCapturer] WxH @ FPS'. "
-            "Applies on next Live start.\n\n"
-            "For Discord/Meet/Zoom: 960x540 (16:9) matches the vcam output "
-            "ratio so faces don't stretch. 640x480 is 4:3 and looks wide "
-            "after upscale. 720p is usually USB-bandwidth capped to ~10fps."
+            "Requested webcam resolution (all 16:9). Camera may negotiate to "
+            "a 4:3 size instead — the vcam path center-crops back to 16:9 so "
+            "faces never stretch. Actual size printed in console as "
+            "'[VideoCapturer] WxH @ FPS'. Applies on next Live start.\n\n"
+            "Speed vs quality: SD/qHD usually hit full 30fps. HD/FHD often "
+            "drop to ~10fps on USB 2.0 webcams due to bandwidth limits."
         ))
         grid.addWidget(self.cb_resolution, 1, 1, 1, 2)
 
