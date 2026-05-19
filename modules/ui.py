@@ -1036,16 +1036,6 @@ class MainWindow(QMainWindow):
             _PREVIEW.show()
 
     def _on_live(self) -> None:
-        # Toggle behavior: if a preview is already running, stop it.
-        # Critical when virtual_cam mode is on — the preview window is
-        # hidden, so the Live button is the only way to stop the session.
-        global _WEBCAM_PREVIEW
-        if _WEBCAM_PREVIEW is not None:
-            _WEBCAM_PREVIEW.close()
-            self.btn_live.setText(_("Live"))
-            update_status("Stopped.")
-            return
-
         idx = self.cb_camera.currentIndex()
         if idx < 0 or idx >= len(self._camera_indices):
             update_status("No camera available")
@@ -1063,18 +1053,10 @@ class MainWindow(QMainWindow):
             from modules.processors.frame.face_swapper import get_face_swapper
             get_face_analyser()
             get_face_swapper()
-            _open_webcam_preview(camera_index, on_close=self._on_live_stopped)
-            # Successful open — flip button to Stop label
-            if _WEBCAM_PREVIEW is not None:
-                self.btn_live.setText(_("Stop Live"))
+            _open_webcam_preview(camera_index)
         else:
             modules.globals.source_target_map = []
             _open_live_mapper_dialog(camera_index, modules.globals.source_target_map)
-
-    def _on_live_stopped(self) -> None:
-        """Reset the Live button when the preview window closes by any path
-        (user closed it, OS killed it, vcam tear-down, etc.)."""
-        self.btn_live.setText(_("Live"))
 
     def closeEvent(self, event):
         # Treat OS-level close as Destroy click
@@ -1366,6 +1348,19 @@ class WebcamPreviewWindow(QWidget):
                 )
                 self._vcam = None
 
+        # In vcam mode, replace the live preview with a static status
+        # message and shrink the window. Saves the cv2.resize + Qt repaint
+        # each tick, but keeps the window's X button as the stop control —
+        # same UX as the regular Live close flow.
+        if self._vcam is not None:
+            self.setWindowTitle("Virtual Cam — Live")
+            self.resize(360, 140)
+            self._image_label.setText(
+                "Virtual Cam is sending frames\nto OBS Virtual Camera.\n\n"
+                "Close this window to stop."
+            )
+            self._image_label.setStyleSheet("font-size: 14px; padding: 12px;")
+
         self._capture_worker = _CaptureWorker(
             self._cap, self._capture_queue, self._stop_event
         )
@@ -1409,10 +1404,11 @@ class WebcamPreviewWindow(QWidget):
                     self._vcam_warned = True
                 self._vcam = None
 
-        # Skip the display-side resize + Qt pixmap conversion when the
-        # window is hidden (Virtual Cam mode). Saves the cv2.resize and
-        # the BGR→QImage copy each tick — small but free.
-        if not self.isHidden():
+        # Skip the display-side resize + Qt pixmap conversion when in
+        # vcam mode (the label shows a static status string instead of
+        # the live preview). Saves the cv2.resize and the BGR→QImage
+        # copy each tick.
+        if self._vcam is None:
             bgr_frame = fit_image_to_size(bgr_frame, self.width(), self.height())
             self._image_label.setPixmap(_bgr_to_qpixmap(bgr_frame))
 
@@ -1457,12 +1453,7 @@ def _open_webcam_preview(camera_index: int, on_close=None) -> None:
         _WEBCAM_PREVIEW.close()
     _WEBCAM_PREVIEW = WebcamPreviewWindow(camera_index)
     _WEBCAM_PREVIEW._on_close_callback = on_close
-    # In Virtual Cam mode the user is consuming the swap via OBS Virtual
-    # Camera in another app — drawing a redundant preview window wastes
-    # CPU on cv2.resize + Qt repaints. Match April fork's behavior:
-    # hidden window, workers still run, frames go to vcam only.
-    if not getattr(modules.globals, "virtual_cam", False):
-        _WEBCAM_PREVIEW.show()
+    _WEBCAM_PREVIEW.show()
 
 
 # ─── mapper dialogs (image/video + live) ────────────────────────────────
