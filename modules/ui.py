@@ -768,12 +768,10 @@ class MainWindow(QMainWindow):
         self.cb_resolution = QComboBox()
         # 640x480 default — native on virtually every webcam, fast on
         # USB 2.0. The vcam path center-crops 4:3 to 16:9 so faces don't
-        # stretch in meetings. 854x480 requests a proper 16:9 SD frame
-        # for cams that support it (else negotiates down). qHD/HD/FHD
-        # are higher 16:9 tiers when bandwidth allows.
+        # stretch in meetings. Higher tiers are proper 16:9 for cameras
+        # that support them (DSLR + capture card, etc).
         self._resolution_options = [
             ("640 x 480", (640, 480)),
-            ("854 x 480 (SD)", (854, 480)),
             ("960 x 540 (qHD)", (960, 540)),
             ("1280 x 720 (HD)", (1280, 720)),
             ("1920 x 1080 (FHD)", (1920, 1080)),
