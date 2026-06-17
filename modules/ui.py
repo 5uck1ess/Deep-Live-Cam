@@ -17,7 +17,6 @@ import sys
 import tempfile
 import threading
 import time
-import webbrowser
 from typing import Callable, List, Optional, Tuple
 
 import cv2
