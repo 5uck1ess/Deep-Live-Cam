@@ -92,6 +92,57 @@ PREVIEW_MAX_WIDTH = 1200
 PREVIEW_DEFAULT_WIDTH = 640
 PREVIEW_DEFAULT_HEIGHT = 360
 
+# Virtual camera output size — fixed 720p so meeting apps don't see
+# our capture-resolution variations. Frames are upscaled before send.
+VCAM_W, VCAM_H = 1280, 720
+VCAM_FPS = 30
+
+
+def _vcam_driver_hint() -> str:
+    """Platform-specific instruction for the virtual-camera backend.
+
+    pyvirtualcam only *talks* to a virtual camera device — the device
+    itself is provided by an OS driver: the OBS Virtual Camera (shipped
+    with OBS Studio) on Windows and macOS, and the v4l2loopback kernel
+    module on Linux. The earlier "install OBS Studio" message was wrong
+    on Linux, so the wording is chosen per-platform.
+    """
+    system = platform.system()
+    if system == "Linux":
+        return "load the v4l2loopback kernel module (e.g. `sudo modprobe v4l2loopback`)"
+    if system == "Darwin":
+        return "install OBS Studio (provides the macOS OBS Virtual Camera)"
+    return "install OBS Studio (provides the OBS Virtual Camera)"
+
+
+def _aspect_crop_to(frame, out_w: int, out_h: int):
+    """Center-crop ``frame`` to the (out_w, out_h) aspect ratio, then resize.
+
+    Used by the vcam send path. A plain ``cv2.resize`` to a different
+    aspect (e.g. 4:3 -> 16:9) horizontally squashes faces in meeting
+    apps. Cropping the longer axis first keeps faces correctly
+    proportioned at the cost of trimming a bit off top/bottom (for
+    4:3 input -> 16:9 output) or left/right (for ultra-wide input).
+    """
+    h, w = frame.shape[:2]
+    if w <= 0 or h <= 0:
+        return frame
+    in_aspect = w / h
+    out_aspect = out_w / out_h
+    if abs(in_aspect - out_aspect) < 0.01:
+        cropped = frame
+    elif in_aspect < out_aspect:
+        new_h = max(1, int(round(w / out_aspect)))
+        y0 = max(0, (h - new_h) // 2)
+        cropped = frame[y0:y0 + new_h, :]
+    else:
+        new_w = max(1, int(round(h * out_aspect)))
+        x0 = max(0, (w - new_w) // 2)
+        cropped = frame[:, x0:x0 + new_w]
+    if cropped.shape[1] == out_w and cropped.shape[0] == out_h:
+        return cropped
+    return cv2.resize(cropped, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
+
 POPUP_WIDTH = 750
 POPUP_HEIGHT = 810
 POPUP_SCROLL_WIDTH = 720
@@ -314,6 +365,7 @@ def save_switch_states():
         "mouth_mask": modules.globals.mouth_mask,
         "show_mouth_mask_box": modules.globals.show_mouth_mask_box,
         "mouth_mask_size": modules.globals.mouth_mask_size,
+        "virtual_cam": modules.globals.virtual_cam,
     }
     try:
         with open("switch_states.json", "w") as f:
@@ -343,6 +395,7 @@ def load_switch_states():
         modules.globals.mouth_mask_size = 0.0
         modules.globals.mouth_mask = False
         modules.globals.show_mouth_mask_box = False
+        modules.globals.virtual_cam = state.get("virtual_cam", False)
     except FileNotFoundError:
         pass
     except (OSError, json.JSONDecodeError):
@@ -572,12 +625,12 @@ class MainWindow(QMainWindow):
 
         def make(field, label, tip):
             sw = _Switch(_(label), getattr(modules.globals, field), _(tip))
-            sw.toggled.connect(
-                lambda v, f=field: (
-                    setattr(modules.globals, f, v),
-                    save_switch_states(),
-                )
-            )
+
+            def _on_toggle(v, f=field):
+                setattr(modules.globals, f, v)
+                save_switch_states()
+
+            sw.toggled.connect(_on_toggle)
             return sw
 
         self.sw_keep_fps = make("keep_fps", "Keep fps",
@@ -594,6 +647,11 @@ class MainWindow(QMainWindow):
                                  "Fix blue/green color cast from some webcams")
         self.sw_show_fps = make("show_fps", "Show FPS",
                                 "Display frames-per-second counter on the live preview")
+        self.sw_virtual_cam = make("virtual_cam", "Virtual Cam",
+                                   "Output processed frames to a virtual camera (1280x720) "
+                                   "so Discord/Meet/Zoom can pick it up. Needs a host backend "
+                                   "(OBS Virtual Camera on Windows/macOS, v4l2loopback on "
+                                   "Linux). Applied at next Live start.")
 
         # Map faces is special — closes mapper when toggled off.
         self.sw_map_faces = _Switch(_("Map faces"), modules.globals.map_faces,
@@ -606,13 +664,16 @@ class MainWindow(QMainWindow):
             self.sw_keep_frames, self.sw_many_faces,
             self.sw_map_faces, self.sw_show_fps,
             self.sw_poisson, self.sw_color_fix,
+            self.sw_virtual_cam,
         ]
         for i, w in enumerate(items):
             grid.addWidget(w, i // 2, i % 2)
 
-        # Face enhancer dropdown
+        # Face enhancer dropdown — place on the next free row.
+        # Items occupy ceil(len/2) rows; (len + 1) // 2 is the next row.
+        enhancer_row = (len(items) + 1) // 2
         enhancer_label = QLabel(_("Face Enhancer:"))
-        grid.addWidget(enhancer_label, len(items) // 2, 0)
+        grid.addWidget(enhancer_label, enhancer_row, 0)
 
         self.cb_enhancer = QComboBox()
         self.cb_enhancer.addItems(["None", "GFPGAN", "GPEN-512", "GPEN-256"])
@@ -626,7 +687,7 @@ class MainWindow(QMainWindow):
         self.cb_enhancer.setCurrentText(initial)
         self.cb_enhancer.currentTextChanged.connect(self._on_enhancer_change)
         self.cb_enhancer.setToolTip(_("Select a face enhancement model (None = no enhancement)"))
-        grid.addWidget(self.cb_enhancer, len(items) // 2, 1)
+        grid.addWidget(self.cb_enhancer, enhancer_row, 1)
 
         return card
 
@@ -1172,8 +1233,9 @@ class _ProcessingWorker(QThread):
 
 
 class WebcamPreviewWindow(QWidget):
-    def __init__(self, camera_index: int):
+    def __init__(self, camera_index: int, on_close: Optional[Callable[[], None]] = None):
         super().__init__()
+        self._on_close_callback = on_close
         self.setWindowTitle("Live Preview")
         self.resize(PREVIEW_DEFAULT_WIDTH, PREVIEW_DEFAULT_HEIGHT)
         layout = QVBoxLayout(self)
@@ -1199,6 +1261,44 @@ class WebcamPreviewWindow(QWidget):
         self._processed_queue: queue.Queue = queue.Queue(maxsize=2)
         self._stop_event = threading.Event()
 
+        # Optional virtual camera output (pyvirtualcam → OBS Virtual Camera).
+        # Snapshot the global at start so toggling mid-session doesn't crash
+        # the send loop; user must Stop+Start to change vcam state.
+        self._vcam = None
+        self._vcam_last_send_ts = 0.0
+        self._vcam_warned = False
+        vcam_requested = getattr(modules.globals, "virtual_cam", False)
+        if vcam_requested:
+            try:
+                import pyvirtualcam
+                self._vcam = pyvirtualcam.Camera(
+                    width=VCAM_W, height=VCAM_H, fps=VCAM_FPS
+                )
+                update_status(
+                    f"Virtual camera started: {self._vcam.device} @ {VCAM_W}x{VCAM_H}"
+                )
+            except ImportError:
+                update_status("pyvirtualcam not installed — pip install pyvirtualcam")
+                self._vcam = None
+            except Exception as e:
+                update_status(
+                    f"Virtual camera failed: {e}. To enable it, {_vcam_driver_hint()}."
+                )
+                self._vcam = None
+
+        # In vcam mode, replace the live preview with a static status
+        # message and shrink the window. Saves the cv2.resize + Qt repaint
+        # each tick, but keeps the window's X button as the stop control —
+        # same UX as the regular Live close flow.
+        if self._vcam is not None:
+            self.setWindowTitle("Virtual Cam — Live")
+            self.resize(360, 140)
+            self._image_label.setText(
+                f"Virtual Cam is sending frames\nto {self._vcam.device}.\n\n"
+                "Close this window to stop."
+            )
+            self._image_label.setStyleSheet("font-size: 14px; padding: 12px;")
+
         self._capture_worker = _CaptureWorker(
             self._cap, self._capture_queue, self._stop_event
         )
@@ -1222,8 +1322,51 @@ class WebcamPreviewWindow(QWidget):
             bgr_frame = self._processed_queue.get_nowait()
         except queue.Empty:
             return
-        bgr_frame = fit_image_to_size(bgr_frame, self.width(), self.height())
-        self._image_label.setPixmap(_bgr_to_qpixmap(bgr_frame))
+
+        # Send to virtual camera BEFORE the display fit-resize so meeting
+        # apps always see the full processed frame at a stable 1280x720,
+        # regardless of how the user has resized the preview window.
+        # Aspect-preserving center crop: many webcams negotiate 4:3 even
+        # when 16:9 is requested (e.g. 360p -> 480p). A plain resize to
+        # 1280x720 would horizontally squash that 4:3 frame, so we crop
+        # the longer axis to match the 16:9 output ratio first.
+        if self._vcam is not None:
+            # Pace to VCAM_FPS — the webcam path can deliver frames faster
+            # (e.g. 60fps), but we advertise 30fps to meeting apps. Skip
+            # ticks until enough wall-clock has elapsed since the last send.
+            # Wall-clock gating (rather than cam.sleep_until_next_frame())
+            # avoids blocking the Qt event loop.
+            now = time.monotonic()
+            if now - self._vcam_last_send_ts >= 1.0 / VCAM_FPS:
+                try:
+                    vcam_frame = _aspect_crop_to(bgr_frame, VCAM_W, VCAM_H)
+                    rgb = cv2.cvtColor(vcam_frame, cv2.COLOR_BGR2RGB)
+                    self._vcam.send(rgb)
+                    self._vcam_last_send_ts = now
+                except Exception as e:
+                    # Don't kill the preview if vcam misbehaves — just log once.
+                    if not self._vcam_warned:
+                        update_status(f"Virtual camera send error (continuing without vcam): {e}")
+                        self._vcam_warned = True
+                    try:
+                        self._vcam.close()
+                    except Exception:
+                        pass
+                    self._vcam = None
+                    # vcam is gone — restore the normal live-preview window so
+                    # the fall-through below doesn't render into the shrunk
+                    # 360x140 status window with the vcam label styling.
+                    self.setWindowTitle("Live Preview")
+                    self.resize(PREVIEW_DEFAULT_WIDTH, PREVIEW_DEFAULT_HEIGHT)
+                    self._image_label.setStyleSheet("")
+
+        # Skip the display-side resize + Qt pixmap conversion when in
+        # vcam mode (the label shows a static status string instead of
+        # the live preview). Saves the cv2.resize and the BGR→QImage
+        # copy each tick.
+        if self._vcam is None:
+            bgr_frame = fit_image_to_size(bgr_frame, self.width(), self.height())
+            self._image_label.setPixmap(_bgr_to_qpixmap(bgr_frame))
 
     def closeEvent(self, event) -> None:
         self._stop_event.set()
@@ -1240,17 +1383,30 @@ class WebcamPreviewWindow(QWidget):
             self._cap.release()
         except Exception:
             pass
+        if getattr(self, "_vcam", None) is not None:
+            try:
+                self._vcam.close()
+            except Exception:
+                pass
+            self._vcam = None
         global _WEBCAM_PREVIEW
         if _WEBCAM_PREVIEW is self:
             _WEBCAM_PREVIEW = None
+        # Notify whoever opened us (typically MainWindow) so they can
+        # reset their button state regardless of how we got closed.
+        if self._on_close_callback is not None:
+            try:
+                self._on_close_callback()
+            except Exception as e:
+                update_status(f"Live close callback error: {e}")
         event.accept()
 
 
-def _open_webcam_preview(camera_index: int) -> None:
+def _open_webcam_preview(camera_index: int, on_close: Optional[Callable[[], None]] = None) -> None:
     global _WEBCAM_PREVIEW
     if _WEBCAM_PREVIEW is not None:
         _WEBCAM_PREVIEW.close()
-    _WEBCAM_PREVIEW = WebcamPreviewWindow(camera_index)
+    _WEBCAM_PREVIEW = WebcamPreviewWindow(camera_index, on_close=on_close)
     _WEBCAM_PREVIEW.show()
 
 

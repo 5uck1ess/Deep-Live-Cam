@@ -70,6 +70,14 @@ enable_interpolation: bool = True # Toggle temporal smoothing
 interpolation_weight: float = 0  # Blend weight for current frame (0.0-1.0). Lower=smoother.
 # --- END: Added for Frame Interpolation ---
 
+# Virtual camera output (pyvirtualcam → host virtual-camera backend).
+# When enabled, processed frames are upscaled to VCAM 1280x720 and sent to
+# the virtual cam so apps like Discord/Meet/Zoom can pick it up as a
+# webcam. Requires a host backend: OBS Virtual Camera (OBS Studio) on
+# Windows/macOS, or the v4l2loopback kernel module on Linux. Toggle is
+# read at Live-start; mid-Live toggling currently requires Stop+Start.
+virtual_cam: bool = False
+
 # --- END OF FILE globals.py ---
 
 import threading

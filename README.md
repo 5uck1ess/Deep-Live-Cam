@@ -96,6 +96,33 @@ Users are expected to use this software responsibly and legally. If using a real
   <video src="https://github.com/user-attachments/assets/2e9b9b82-fa04-4b70-9f56-b1f68e7672d0" width="450" controls></video>
 </p>
 
+### Virtual Camera Output (Zoom / Meet / Discord)
+
+**Send the swapped video into any meeting app as a webcam**
+
+Turn on the **Virtual Cam** switch in *Options*, then click **Live**. Deep-Live-Cam
+streams the processed frames to a virtual camera at 1280x720 @ 30fps, so you can
+pick it as your webcam (e.g. "OBS Virtual Camera", or the v4l2loopback device on
+Linux) in Zoom, Google Meet, Discord, and similar apps.
+
+Virtual-camera output is handled by [`pyvirtualcam`](https://pypi.org/project/pyvirtualcam/)
+(installed from `requirements.txt`), which writes to a **host backend driver** you
+must install yourself:
+
+- **Windows / macOS** — install [OBS Studio](https://obsproject.com/); its bundled
+  **OBS Virtual Camera** is the device `pyvirtualcam` targets. On macOS, start the
+  OBS Virtual Camera from OBS once so the system registers the device.
+- **Linux** — load the **v4l2loopback** kernel module, for example:
+
+  ```bash
+  sudo apt install v4l2loopback-dkms     # Debian / Ubuntu
+  sudo modprobe v4l2loopback             # creates a /dev/videoN device
+  ```
+
+The switch takes effect at the next **Live** start. If no backend is available,
+the normal preview keeps running and a status message tells you which driver to
+install for your OS.
+
 ## Installation (Manual)
 
 **Please be aware that the installation requires technical skills and is not for beginners. Consider downloading the quickstart version.**
