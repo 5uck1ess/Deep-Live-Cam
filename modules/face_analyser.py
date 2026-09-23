@@ -48,6 +48,9 @@ def get_face_analyser() -> Any:
                 from modules.processors.frame._onnx_enhancer import (
                     build_provider_config,
                 )
+                from modules.model_downloader import ensure_insightface_pack
+
+                ensure_insightface_pack('buffalo_l')
                 providers = build_provider_config()
                 analyser = insightface.app.FaceAnalysis(
                     name='buffalo_l',
@@ -361,6 +364,9 @@ def default_target_face():
                 best_face = frame['faces'][0]
                 best_frame = frame
                 break
+
+        if best_face is None:
+            continue  # No faces detected in this cluster — skip
 
         for frame in map['target_faces_in_frame']:
             for face in frame['faces']:
